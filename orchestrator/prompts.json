@@ -1,0 +1,18 @@
+[
+  "Explain the theory of general relativity in simple terms that a high school student would understand.",
+  "Write a Python function to compute Fibonacci numbers iteratively and explain its time complexity.",
+  "What are the main differences between Docker and Kubernetes? When should I use each one?",
+  "Summarize the plot of 'One Hundred Years of Solitude' by Gabriel Garcia Marquez.",
+  "Describe step by step how to deploy a containerized web application on AWS using ECS.",
+  "What is the difference between supervised, unsupervised, and reinforcement learning? Give examples.",
+  "Explain how the transformer architecture works, focusing on the self-attention mechanism.",
+  "Write a SQL query that finds the top 10 customers by revenue for each region, using window functions.",
+  "What are the pros and cons of microservices architecture versus monolithic architecture?",
+  "Explain how HTTPS works, including the TLS handshake process.",
+  "Write a bash script that monitors disk usage and sends an alert when any partition exceeds 80%.",
+  "Describe the CAP theorem and explain how distributed databases make trade-offs.",
+  "What is gradient descent and how does backpropagation work in neural networks?",
+  "Explain the concept of zero-knowledge proofs and give a practical example.",
+  "How does the Linux kernel manage memory? Explain virtual memory and page tables.",
+  "Write a React component that implements an infinite scroll list with lazy loading."
+]

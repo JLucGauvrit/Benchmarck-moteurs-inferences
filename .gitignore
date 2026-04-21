@@ -1,2 +1,7 @@
 .vscode-server/
 .gitconfig
+.dotnet/
+.cache/
+.copilot/
+.env
+.docker/
