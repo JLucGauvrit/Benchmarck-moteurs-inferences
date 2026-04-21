@@ -1,5 +1,3 @@
-version: "3.9"
-
 # ──────────────────────────────────────────────────────────────────────────────
 #  LLM Inference Engine Benchmark Suite
 #  Engines : AirLLM · llama.cpp · Ollama · vLLM
