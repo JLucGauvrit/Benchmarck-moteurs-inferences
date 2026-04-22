@@ -440,7 +440,7 @@ async def main() -> None:
         AirLLMAdapter(),
         LlamaCppAdapter(),
         OllamaAdapter(),
-        VLLMAdapter(),
+        # VLLMAdapter(),
     ]
 
     all_stats: list[BenchmarkStats] = []
