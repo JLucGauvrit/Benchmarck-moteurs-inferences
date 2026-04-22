@@ -79,6 +79,19 @@ services:
   llamacpp:
     build: ./engines/llamacpp
     container_name: bench-llamacpp
+    command:
+      - "--model"
+      - "/models/mistral-7b-q4_k_m.gguf"
+      - "--port"
+      - "8080"
+      - "--host"
+      - "0.0.0.0"
+      - "--n-gpu-layers"
+      - "99"
+      - "--ctx-size"
+      - "4096"
+      - "--parallel"
+      - "4"
     <<: *gpu
     environment:
       - MODEL_PATH=/models/${GGUF_MODEL:-mistral-7b-q4_k_m.gguf}
@@ -112,7 +125,7 @@ services:
       - "11434:11434"
     networks: [bench-net]
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:11434/api/tags"]
+      test: ["CMD", "/bin/ollama", "list"]
       interval: 10s
       timeout: 5s
       retries: 20
@@ -167,4 +180,22 @@ services:
       - "3000:3000"
     networks: [bench-net]
     depends_on: [prometheus]
+    profiles: [monitoring]
+
+  dcgm-exporter:
+    image: nvcr.io/nvidia/k8s/dcgm-exporter:3.3.5-3.4.0-ubuntu22.04
+    container_name: bench-dcgm
+    <<: *gpu
+    networks: [bench-net]
+    profiles: [monitoring]
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: bench-cadvisor
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks: [bench-net]
     profiles: [monitoring]

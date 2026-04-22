@@ -8,7 +8,9 @@ RUN pip install --no-cache-dir \
     airllm==2.11.0 \
     fastapi==0.111.0 \
     uvicorn[standard]==0.29.0 \
-    transformers==4.40.2
+    torch==2.2.2 \
+    transformers==4.40.2 \
+    optimum==1.17.1
 
 WORKDIR /app
 COPY server.py .

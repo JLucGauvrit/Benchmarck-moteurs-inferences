@@ -9,7 +9,9 @@ RUN pip install --no-cache-dir \
     pandas==2.2.2 \
     matplotlib==3.9.0 \
     numpy==1.26.4 \
-    pydantic==2.7.1
+    pydantic==2.7.1 \
+    pynvml==11.5.0 \
+    psutil==5.9.8
 
 COPY . .
 

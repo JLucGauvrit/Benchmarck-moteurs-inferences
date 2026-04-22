@@ -5,3 +5,4 @@
 .copilot/
 .env
 .docker/
+models/
