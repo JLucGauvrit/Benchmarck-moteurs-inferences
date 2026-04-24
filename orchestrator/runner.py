@@ -170,7 +170,7 @@ class OllamaAdapter(EngineAdapter):
 
     def __init__(self):
         self.base_url = os.getenv("OLLAMA_URL", "http://ollama:11434")
-        self.model = MODEL_NAME.split("/")[-1]
+        self.model = "qwen2.5:7b" 
 
     async def generate(self, client, prompt, max_tokens):
         payload = {
@@ -217,7 +217,8 @@ class VLLMAdapter(EngineAdapter):
 
     def __init__(self):
         self.base_url = os.getenv("VLLM_URL", "http://vllm:8000")
-        self.model = MODEL_NAME
+        self.model = "qwen2.5:7b"  # au lieu de MODEL_NAME
+
 
     async def generate(self, client, prompt, max_tokens):
         payload = {
@@ -379,7 +380,7 @@ def plot_results(all_stats: list[BenchmarkStats]) -> None:
         concs = sorted(set(s.concurrency for s in all_stats))
 
         fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-        fig.suptitle(f"Benchmark — {MODEL_NAME}", fontsize=13)
+        fig.suptitle("Benchmark — qwen2.5:7b", fontsize=13)
 
         metrics = [
             ("throughput_tok_s", "Throughput (tok/s)", axes[0]),

@@ -10,7 +10,8 @@ RUN pip install --no-cache-dir \
     uvicorn[standard]==0.29.0 \
     torch==2.2.2 \
     transformers==4.40.2 \
-    optimum==1.17.1
+    optimum==1.17.1 \
+    bitsandbytes==0.43.1
 
 WORKDIR /app
 COPY server.py .

@@ -6,3 +6,4 @@
 .env
 .docker/
 models/
+cache/
