@@ -2,7 +2,7 @@
 #  LLM Inference Benchmark — Makefile
 # ──────────────────────────────────────────────────────────────────────────────
 
-.PHONY: help build run run-monitoring stop clean logs pull-model
+.PHONY: help build run run-monitoring run-dashboard stop clean logs pull-model
 
 DOCKER_COMPOSE = docker compose
 ENV_FILE = .env
@@ -17,6 +17,11 @@ build: ## Build all engine images
 run: ## Run the benchmark (engines + orchestrator)
 	@cp -n .env.example $(ENV_FILE) 2>/dev/null || true
 	$(DOCKER_COMPOSE) --env-file $(ENV_FILE) up --abort-on-container-exit orchestrator
+
+run-dashboard: ## Start the supervision dashboard (http://localhost:8090)
+	@cp -n .env.example $(ENV_FILE) 2>/dev/null || true
+	$(DOCKER_COMPOSE) --env-file $(ENV_FILE) up dashboard -d
+	@echo "Dashboard disponible sur http://localhost:8090"
 
 run-monitoring: ## Run benchmark + Prometheus + Grafana
 	@cp -n .env.example $(ENV_FILE) 2>/dev/null || true

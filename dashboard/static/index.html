@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LLM Benchmark Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --border: #334155;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --blue: #3b82f6;
+    --green: #22c55e;
+    --red: #ef4444;
+    --yellow: #eab308;
+    --violet: #a78bfa;
+    --orange: #fb923c;
+    --emerald: #34d399;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+    padding: 12px;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 12px;
+  }
+  header h1 { font-size: 1.15rem; font-weight: 600; letter-spacing: .01em; }
+  header .meta { color: var(--muted); font-size: 0.82rem; }
+  #ws-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--red); display: inline-block; margin-right: 6px;
+  }
+  #ws-dot.connected { background: var(--green); }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 220px 1fr 1fr;
+    grid-template-rows: auto auto;
+    gap: 12px;
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    overflow: hidden;
+  }
+  .card h2 {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  /* ── Engines ── */
+  .engine-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: 7px;
+    background: rgba(255,255,255,.04);
+    margin-bottom: 7px;
+  }
+  .engine-dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--red); flex-shrink: 0;
+    transition: background .4s;
+  }
+  .engine-dot.up { background: var(--green); }
+  .engine-name { flex: 1; font-weight: 500; }
+  .engine-status { font-size: 0.75rem; color: var(--muted); }
+
+  /* ── Control ── */
+  #control-card { grid-column: 2; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 9px 20px; border-radius: 7px; border: none;
+    font-size: 0.88rem; font-weight: 600; cursor: pointer;
+    transition: opacity .15s;
+  }
+  .btn:hover { opacity: .85; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .btn-start { background: var(--blue); color: #fff; }
+  .btn-stop  { background: var(--red);  color: #fff; }
+
+  .progress-wrap { margin-top: 14px; }
+  .progress-label { display: flex; justify-content: space-between; margin-bottom: 5px; }
+  .progress-label .step { color: var(--muted); font-size: 0.78rem; }
+  .progress-bar-bg {
+    height: 7px; background: var(--border); border-radius: 4px; overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%; background: var(--blue); border-radius: 4px;
+    width: 0%; transition: width .5s;
+  }
+  .current-step {
+    margin-top: 10px; font-size: 0.8rem; color: var(--muted);
+    min-height: 1.2em;
+  }
+  .state-badge {
+    display: inline-block; margin-top: 10px;
+    padding: 3px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600;
+  }
+  .state-idle    { background: rgba(148,163,184,.15); color: var(--muted); }
+  .state-running { background: rgba(59,130,246,.2);   color: var(--blue); }
+  .state-done    { background: rgba(34,197,94,.2);    color: var(--green); }
+  .state-error   { background: rgba(239,68,68,.2);    color: var(--red); }
+
+  /* ── Live metrics ── */
+  #metrics-card { grid-column: 3; }
+  .chart-mini { height: 80px; margin-bottom: 10px; }
+  .metric-label { font-size: 0.73rem; color: var(--muted); margin-bottom: 3px; }
+  .metric-val   { font-size: 1rem; font-weight: 600; margin-bottom: 6px; }
+
+  /* ── Stream ── */
+  #stream-card { grid-column: 1 / 3; grid-row: 2; }
+  #stream-feed {
+    height: 220px; overflow-y: auto; font-size: 0.78rem;
+    display: flex; flex-direction: column; gap: 5px;
+  }
+  #stream-feed::-webkit-scrollbar { width: 4px; }
+  #stream-feed::-webkit-scrollbar-track { background: transparent; }
+  #stream-feed::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .stream-entry {
+    padding: 6px 10px; border-radius: 6px;
+    background: rgba(255,255,255,.04); border-left: 3px solid var(--border);
+  }
+  .stream-engine { font-weight: 600; margin-right: 6px; }
+  .stream-prompt { color: var(--muted); font-style: italic; }
+  .stream-text   { color: var(--text); margin-top: 2px; }
+
+  /* ── Results ── */
+  #results-card { grid-column: 3; grid-row: 2; }
+  .result-select {
+    width: 100%; background: var(--bg); border: 1px solid var(--border);
+    color: var(--text); padding: 6px 9px; border-radius: 6px;
+    font-size: 0.8rem; margin-bottom: 12px; cursor: pointer;
+  }
+  .charts-row { display: flex; gap: 10px; }
+  .chart-wrap { flex: 1; }
+  .chart-title { font-size: 0.7rem; color: var(--muted); margin-bottom: 4px; text-align: center; }
+  .chart-result { height: 150px; }
+
+  @media (max-width: 900px) {
+    .grid { grid-template-columns: 1fr; }
+    #control-card, #metrics-card, #stream-card, #results-card { grid-column: 1; grid-row: auto; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span id="ws-dot"></span>LLM Benchmark Dashboard</h1>
+  <div class="meta" id="header-model">model: —</div>
+</header>
+
+<div class="grid">
+
+  <!-- Engines -->
+  <div class="card" id="engines-card">
+    <h2>Engines</h2>
+    <div class="engine-row" id="eng-airllm">
+      <div class="engine-dot" id="dot-airllm"></div>
+      <span class="engine-name" style="color:var(--violet)">AirLLM</span>
+      <span class="engine-status" id="status-airllm">—</span>
+    </div>
+    <div class="engine-row" id="eng-llamacpp">
+      <div class="engine-dot" id="dot-llamacpp"></div>
+      <span class="engine-name" style="color:var(--orange)">llama.cpp</span>
+      <span class="engine-status" id="status-llamacpp">—</span>
+    </div>
+    <div class="engine-row" id="eng-ollama">
+      <div class="engine-dot" id="dot-ollama"></div>
+      <span class="engine-name" style="color:var(--emerald)">Ollama</span>
+      <span class="engine-status" id="status-ollama">—</span>
+    </div>
+  </div>
+
+  <!-- Control -->
+  <div class="card" id="control-card">
+    <h2>Contrôle</h2>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <button class="btn btn-start" id="btn-start" onclick="startBench()">▶ Lancer</button>
+      <button class="btn btn-stop"  id="btn-stop"  onclick="stopBench()" disabled>■ Arrêter</button>
+    </div>
+    <div class="progress-wrap">
+      <div class="progress-label">
+        <span id="prog-label">En attente</span>
+        <span class="step" id="prog-step"></span>
+      </div>
+      <div class="progress-bar-bg"><div class="progress-bar-fill" id="prog-bar"></div></div>
+      <div class="current-step" id="prog-detail"></div>
+      <span class="state-badge state-idle" id="state-badge">idle</span>
+    </div>
+  </div>
+
+  <!-- Live metrics -->
+  <div class="card" id="metrics-card">
+    <h2>Métriques live</h2>
+    <div class="metric-label">GPU utilisation</div>
+    <div class="metric-val" id="val-gpu">—</div>
+    <div class="chart-mini"><canvas id="chart-gpu"></canvas></div>
+    <div class="metric-label">VRAM utilisée</div>
+    <div class="metric-val" id="val-vram">—</div>
+    <div class="chart-mini"><canvas id="chart-vram"></canvas></div>
+    <div class="metric-label">CPU / RAM</div>
+    <div class="metric-val" id="val-cpu">—</div>
+    <div class="chart-mini"><canvas id="chart-cpu"></canvas></div>
+  </div>
+
+  <!-- Stream -->
+  <div class="card" id="stream-card">
+    <h2>Phrases générées <span id="stream-count" style="color:var(--muted);font-weight:400;"></span></h2>
+    <div id="stream-feed"></div>
+  </div>
+
+  <!-- Results -->
+  <div class="card" id="results-card">
+    <h2>Résultats</h2>
+    <select class="result-select" id="result-select" onchange="loadResult(this.value)">
+      <option value="">— Choisir un résultat —</option>
+    </select>
+    <div class="charts-row">
+      <div class="chart-wrap">
+        <div class="chart-title">Throughput (tok/s)</div>
+        <div class="chart-result"><canvas id="chart-throughput"></canvas></div>
+      </div>
+      <div class="chart-wrap">
+        <div class="chart-title">TTFT p50 (ms)</div>
+        <div class="chart-result"><canvas id="chart-ttft"></canvas></div>
+      </div>
+      <div class="chart-wrap">
+        <div class="chart-title">Latence p95 (ms)</div>
+        <div class="chart-result"><canvas id="chart-lat"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── Constants ──────────────────────────────────────────────────────────────────
+const ENGINE_COLORS = {
+  airllm:   '#a78bfa',
+  llamacpp: '#fb923c',
+  ollama:   '#34d399',
+  vllm:     '#60a5fa',
+};
+const MAX_POINTS = 60;
+const CHART_OPTS = {
+  responsive: true,
+  maintainAspectRatio: false,
+  animation: false,
+  plugins: { legend: { display: false } },
+  scales: {
+    x: { display: false },
+    y: {
+      ticks: { color: '#94a3b8', font: { size: 10 } },
+      grid: { color: 'rgba(255,255,255,.06)' },
+      border: { display: false },
+    }
+  }
+};
+
+// ── Live chart data ────────────────────────────────────────────────────────────
+const liveData = {
+  gpu:  { labels: [], data: [] },
+  vram: { labels: [], data: [] },
+  cpu:  { labels: [], data: [] },
+};
+
+function makeLineChart(id, color, label) {
+  const ctx = document.getElementById(id).getContext('2d');
+  return new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: liveData[label].labels,
+      datasets: [{
+        data: liveData[label].data,
+        borderColor: color,
+        backgroundColor: color + '22',
+        borderWidth: 1.5,
+        pointRadius: 0,
+        fill: true,
+        tension: 0.3,
+      }]
+    },
+    options: { ...CHART_OPTS }
+  });
+}
+
+const chartGpu  = makeLineChart('chart-gpu',  '#3b82f6', 'gpu');
+const chartVram = makeLineChart('chart-vram', '#a78bfa', 'vram');
+const chartCpu  = makeLineChart('chart-cpu',  '#34d399', 'cpu');
+
+function pushLive(key, val) {
+  const d = liveData[key];
+  d.labels.push('');
+  d.data.push(val);
+  if (d.labels.length > MAX_POINTS) { d.labels.shift(); d.data.shift(); }
+}
+
+// ── Results charts ─────────────────────────────────────────────────────────────
+const resultChartOpts = {
+  responsive: true,
+  maintainAspectRatio: false,
+  animation: { duration: 300 },
+  plugins: { legend: { labels: { color: '#94a3b8', boxWidth: 12, font: { size: 10 } } } },
+  scales: {
+    x: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,.06)' } },
+    y: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,.06)' }, border: { display: false } },
+  }
+};
+
+let chartThrough = null, chartTTFT = null, chartLat = null;
+
+function makeBarChart(id) {
+  const ctx = document.getElementById(id).getContext('2d');
+  return new Chart(ctx, {
+    type: 'bar',
+    data: { labels: [], datasets: [] },
+    options: { ...resultChartOpts }
+  });
+}
+
+chartThrough = makeBarChart('chart-throughput');
+chartTTFT    = makeBarChart('chart-ttft');
+chartLat     = makeBarChart('chart-lat');
+
+function updateResultCharts(stats) {
+  const engines = [...new Set(stats.map(s => s.engine))];
+  const concs   = [...new Set(stats.map(s => s.concurrency))].sort((a,b) => a-b);
+  const labels  = concs.map(c => `c=${c}`);
+
+  function buildDatasets(metric) {
+    return engines.map(eng => ({
+      label: eng,
+      data: concs.map(c => {
+        const r = stats.find(s => s.engine === eng && s.concurrency === c);
+        return r ? r[metric] : 0;
+      }),
+      backgroundColor: (ENGINE_COLORS[eng] || '#60a5fa') + 'cc',
+      borderColor: ENGINE_COLORS[eng] || '#60a5fa',
+      borderWidth: 1,
+      borderRadius: 3,
+    }));
+  }
+
+  [
+    [chartThrough, 'throughput_tok_s'],
+    [chartTTFT,    'ttft_p50_ms'],
+    [chartLat,     'latency_p95_ms'],
+  ].forEach(([chart, metric]) => {
+    chart.data.labels   = labels;
+    chart.data.datasets = buildDatasets(metric);
+    chart.update();
+  });
+}
+
+// ── Results selector ───────────────────────────────────────────────────────────
+async function refreshResultsList() {
+  const resp = await fetch('/api/results');
+  const files = await resp.json();
+  const sel = document.getElementById('result-select');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— Choisir un résultat —</option>';
+  files.forEach(f => {
+    const o = document.createElement('option');
+    o.value = f;
+    const ts = f.replace('results_', '').replace('.json', '');
+    o.textContent = new Date(parseInt(ts) * 1000).toLocaleString('fr-FR');
+    sel.appendChild(o);
+  });
+  // Auto-select latest when a new one appears
+  if (files.length && !cur && sel.options.length > 1) {
+    sel.value = files[0];
+    loadResult(files[0]);
+  } else if (cur) {
+    sel.value = cur;
+  }
+}
+
+async function loadResult(filename) {
+  if (!filename) return;
+  const resp = await fetch(`/api/results/${filename}`);
+  const stats = await resp.json();
+  updateResultCharts(stats);
+}
+
+// ── Engine health ──────────────────────────────────────────────────────────────
+function updateHealth(health) {
+  for (const [name, up] of Object.entries(health)) {
+    const dot = document.getElementById(`dot-${name}`);
+    const lbl = document.getElementById(`status-${name}`);
+    if (dot) dot.classList.toggle('up', up);
+    if (lbl) lbl.textContent = up ? 'UP' : 'DOWN';
+  }
+}
+
+// ── Benchmark status ──────────────────────────────────────────────────────────
+function updateStatus(st) {
+  const badge  = document.getElementById('state-badge');
+  const bar    = document.getElementById('prog-bar');
+  const label  = document.getElementById('prog-label');
+  const step   = document.getElementById('prog-step');
+  const detail = document.getElementById('prog-detail');
+  const btnS   = document.getElementById('btn-start');
+  const btnX   = document.getElementById('btn-stop');
+
+  const state = st.state || 'idle';
+  badge.className = `state-badge state-${state}`;
+  badge.textContent = state;
+
+  const pct = st.total ? Math.round((st.progress || 0) / st.total * 100) : 0;
+  bar.style.width = pct + '%';
+  step.textContent = st.total ? `${st.progress || 0}/${st.total}` : '';
+
+  if (state === 'running') {
+    label.textContent = 'En cours…';
+    detail.textContent = st.engine ? `${st.engine} @ concurrence ${st.concurrency}` : '';
+    btnS.disabled = true;
+    btnX.disabled = false;
+  } else if (state === 'done') {
+    label.textContent = 'Terminé';
+    detail.textContent = '';
+    btnS.disabled = false;
+    btnX.disabled = true;
+    refreshResultsList();
+  } else if (state === 'error') {
+    label.textContent = 'Erreur';
+    detail.textContent = st.error || '';
+    btnS.disabled = false;
+    btnX.disabled = true;
+  } else {
+    label.textContent = 'En attente';
+    detail.textContent = '';
+    btnS.disabled = false;
+    btnX.disabled = true;
+  }
+}
+
+// ── Stream feed ────────────────────────────────────────────────────────────────
+let streamCount = 0;
+
+function addStreamEntry(entry) {
+  streamCount++;
+  document.getElementById('stream-count').textContent = `(${streamCount})`;
+  const feed = document.getElementById('stream-feed');
+  const div  = document.createElement('div');
+  div.className = 'stream-entry';
+  const color = ENGINE_COLORS[entry.engine] || '#60a5fa';
+  div.style.borderLeftColor = color;
+  div.innerHTML =
+    `<span class="stream-engine" style="color:${color}">[${entry.engine} c=${entry.concurrency}]</span>` +
+    `<span class="stream-prompt">${escHtml(entry.prompt || '')}…</span>` +
+    `<div class="stream-text">${escHtml(entry.generated || '')}</div>`;
+  feed.appendChild(div);
+  // Keep max 100 entries
+  while (feed.children.length > 100) feed.removeChild(feed.firstChild);
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── WebSocket ──────────────────────────────────────────────────────────────────
+let ws = null;
+let wsReconnectTimer = null;
+
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+  ws.onopen = () => {
+    document.getElementById('ws-dot').className = 'connected';
+    clearTimeout(wsReconnectTimer);
+  };
+
+  ws.onclose = () => {
+    document.getElementById('ws-dot').className = '';
+    wsReconnectTimer = setTimeout(connectWS, 3000);
+  };
+
+  ws.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data);
+    if (msg.type !== 'tick') return;
+
+    // Metrics
+    const m = msg.metrics || {};
+    const gpu = m.gpus && m.gpus[0];
+    const gpuPct  = gpu ? gpu.gpu_util_pct : 0;
+    const vramGB  = gpu ? +(gpu.vram_used_mb / 1024).toFixed(2) : 0;
+    const vramTot = gpu ? +(gpu.vram_total_mb / 1024).toFixed(1) : 0;
+    const cpuPct  = m.cpu_pct || 0;
+
+    document.getElementById('val-gpu').textContent  = gpu ? `${gpuPct}%` : 'N/A';
+    document.getElementById('val-vram').textContent = gpu ? `${vramGB} / ${vramTot} GB` : 'N/A';
+    document.getElementById('val-cpu').textContent  = `CPU ${cpuPct.toFixed(1)}%  RAM ${m.ram_used_gb}/${m.ram_total_gb} GB`;
+
+    pushLive('gpu',  gpuPct);
+    pushLive('vram', vramGB);
+    pushLive('cpu',  cpuPct);
+    chartGpu.update('none');
+    chartVram.update('none');
+    chartCpu.update('none');
+
+    // Status
+    if (msg.status) updateStatus(msg.status);
+
+    // Health (every 5 ticks)
+    if (msg.health) updateHealth(msg.health);
+
+    // Stream lines
+    (msg.stream || []).forEach(addStreamEntry);
+  };
+}
+
+// ── Actions ────────────────────────────────────────────────────────────────────
+async function startBench() {
+  const resp = await fetch('/api/benchmark/start', { method: 'POST' });
+  const data = await resp.json();
+  if (data.error) alert(data.error);
+  else streamCount = 0;
+}
+
+async function stopBench() {
+  await fetch('/api/benchmark/stop', { method: 'POST' });
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+(async () => {
+  connectWS();
+  await refreshResultsList();
+  // Load model name from env if exposed via status
+  const st = await fetch('/api/benchmark/status').then(r => r.json());
+  if (st.model) document.getElementById('header-model').textContent = `model: ${st.model}`;
+  // Refresh results list every 30s
+  setInterval(refreshResultsList, 30000);
+})();
+</script>
+</body>
+</html>

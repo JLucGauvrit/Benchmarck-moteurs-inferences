@@ -33,6 +33,29 @@ NUM_TOKENS = int(os.getenv("NUM_TOKENS", "256"))
 WARMUP = int(os.getenv("WARMUP_REQUESTS", "3"))
 CONCURRENCY_LEVELS = [int(x) for x in os.getenv("CONCURRENCY", "1,4,8").split(",")]
 
+
+def _write_status(data: dict) -> None:
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        (OUTPUT_DIR / "status.json").write_text(json.dumps(data))
+    except Exception:
+        pass
+
+
+def _append_stream(engine: str, concurrency: int, prompt: str, generated: str) -> None:
+    try:
+        entry = {
+            "ts": time.time(),
+            "engine": engine,
+            "concurrency": concurrency,
+            "prompt": prompt[:80],
+            "generated": generated[:300],
+        }
+        with open(OUTPUT_DIR / "stream.jsonl", "a") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception:
+        pass
+
 # ── Data models ───────────────────────────────────────────────────────────────
 
 @dataclass
@@ -45,6 +68,7 @@ class RequestResult:
     total_latency_ms: float
     success: bool
     error: Optional[str] = None
+    generated_text: str = ""
 
 @dataclass
 class BenchmarkStats:
@@ -87,8 +111,9 @@ class AirLLMAdapter(EngineAdapter):
         t0 = time.perf_counter()
         ttft_ms = None
         total_tokens = 0
+        generated_text = ""
         try:
-            async with client.stream("POST", f"{self.base_url}/generate", json=payload, timeout=120) as resp:
+            async with client.stream("POST", f"{self.base_url}/generate", json=payload) as resp:
                 resp.raise_for_status()
                 async for line in resp.aiter_lines():
                     if not line or not line.startswith("data:"):
@@ -100,6 +125,7 @@ class AirLLMAdapter(EngineAdapter):
                     if ttft_ms is None:
                         ttft_ms = (time.perf_counter() - t0) * 1000
                     total_tokens += data.get("token_count", 1)
+                    generated_text += data.get("token", "")
             t1 = time.perf_counter()
             return RequestResult(
                 engine=self.name, concurrency=0,
@@ -108,6 +134,7 @@ class AirLLMAdapter(EngineAdapter):
                 ttft_ms=ttft_ms or 0,
                 total_latency_ms=(t1 - t0) * 1000,
                 success=True,
+                generated_text=generated_text,
             )
         except Exception as e:
             return RequestResult(
@@ -135,6 +162,7 @@ class LlamaCppAdapter(EngineAdapter):
         t0 = time.perf_counter()
         ttft_ms = None
         total_tokens = 0
+        generated_text = ""
         try:
             async with client.stream("POST", f"{self.base_url}/completion", json=payload, timeout=120) as resp:
                 resp.raise_for_status()
@@ -145,6 +173,7 @@ class LlamaCppAdapter(EngineAdapter):
                     if ttft_ms is None:
                         ttft_ms = (time.perf_counter() - t0) * 1000
                     total_tokens += 1
+                    generated_text += data.get("content", "")
                     if data.get("stop"):
                         break
             t1 = time.perf_counter()
@@ -155,6 +184,7 @@ class LlamaCppAdapter(EngineAdapter):
                 ttft_ms=ttft_ms or 0,
                 total_latency_ms=(t1 - t0) * 1000,
                 success=True,
+                generated_text=generated_text,
             )
         except Exception as e:
             return RequestResult(
@@ -182,6 +212,7 @@ class OllamaAdapter(EngineAdapter):
         t0 = time.perf_counter()
         ttft_ms = None
         total_tokens = 0
+        generated_text = ""
         try:
             async with client.stream("POST", f"{self.base_url}/api/generate", json=payload, timeout=120) as resp:
                 resp.raise_for_status()
@@ -192,6 +223,7 @@ class OllamaAdapter(EngineAdapter):
                     if ttft_ms is None:
                         ttft_ms = (time.perf_counter() - t0) * 1000
                     total_tokens += 1
+                    generated_text += data.get("response", "")
                     if data.get("done"):
                         break
             t1 = time.perf_counter()
@@ -202,6 +234,7 @@ class OllamaAdapter(EngineAdapter):
                 ttft_ms=ttft_ms or 0,
                 total_latency_ms=(t1 - t0) * 1000,
                 success=True,
+                generated_text=generated_text,
             )
         except Exception as e:
             return RequestResult(
@@ -217,7 +250,7 @@ class VLLMAdapter(EngineAdapter):
 
     def __init__(self):
         self.base_url = os.getenv("VLLM_URL", "http://vllm:8000")
-        self.model = "qwen2.5:7b"  # au lieu de MODEL_NAME
+        self.model = "Qwen/Qwen2.5-7B-Instruct-AWQ"
 
 
     async def generate(self, client, prompt, max_tokens):
@@ -304,7 +337,8 @@ async def bench_engine(
 ) -> BenchmarkStats:
     """Run benchmark for a single engine at a given concurrency level."""
 
-    async with httpx.AsyncClient() as client:
+    timeout = httpx.Timeout(300.0) if adapter.name == "airllm" else httpx.Timeout(120.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
         # warm-up
         for i in range(warmup):
             await adapter.generate(client, prompts[i % len(prompts)], max_tokens)
@@ -318,6 +352,8 @@ async def bench_engine(
                 r = await adapter.generate(client, prompt, max_tokens)
                 r.concurrency = concurrency
                 results.append(r)
+                if r.success and r.generated_text:
+                    _append_stream(adapter.name, concurrency, prompt, r.generated_text)
 
         tasks = [one_request(prompts[i % len(prompts)]) for i in range(len(prompts))]
         await asyncio.gather(*tasks)
@@ -441,10 +477,20 @@ async def main() -> None:
         AirLLMAdapter(),
         LlamaCppAdapter(),
         OllamaAdapter(),
-        # VLLMAdapter(),
+        VLLMAdapter(),
     ]
 
     all_stats: list[BenchmarkStats] = []
+    total_tasks = len(adapters) * len(CONCURRENCY_LEVELS)
+    started_at = time.time()
+
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    (OUTPUT_DIR / "stream.jsonl").write_text("")
+    _write_status({
+        "state": "running", "progress": 0, "total": total_tasks,
+        "engine": "", "concurrency": 0,
+        "model": MODEL_NAME, "started_at": started_at,
+    })
 
     console.rule("[bold cyan]LLM Inference Benchmark[/bold cyan]")
     console.print(f"Model      : [yellow]{MODEL_NAME}[/yellow]")
@@ -453,24 +499,39 @@ async def main() -> None:
     console.print(f"Prompts    : {len(prompts)}")
     console.print()
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TimeElapsedColumn(),
-        console=console,
-    ) as progress:
-        total_tasks = len(adapters) * len(CONCURRENCY_LEVELS)
-        task = progress.add_task("Benchmarking...", total=total_tasks)
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Benchmarking...", total=total_tasks)
+            step = 0
 
-        for adapter in adapters:
-            for concurrency in CONCURRENCY_LEVELS:
-                progress.update(task, description=f"{adapter.name} @ c={concurrency}")
-                stats = await bench_engine(
-                    adapter, prompts, concurrency, NUM_TOKENS, WARMUP
-                )
-                all_stats.append(stats)
-                progress.advance(task)
+            for adapter in adapters:
+                for concurrency in CONCURRENCY_LEVELS:
+                    _write_status({
+                        "state": "running", "progress": step, "total": total_tasks,
+                        "engine": adapter.name, "concurrency": concurrency,
+                        "model": MODEL_NAME, "started_at": started_at,
+                    })
+                    progress.update(task, description=f"{adapter.name} @ c={concurrency}")
+                    stats = await bench_engine(
+                        adapter, prompts, concurrency, NUM_TOKENS, WARMUP
+                    )
+                    all_stats.append(stats)
+                    step += 1
+                    progress.advance(task)
+
+        _write_status({
+            "state": "done", "progress": total_tasks, "total": total_tasks,
+            "model": MODEL_NAME, "started_at": started_at, "finished_at": time.time(),
+        })
+    except Exception as e:
+        _write_status({"state": "error", "error": str(e), "model": MODEL_NAME})
+        raise
 
     print_table(all_stats)
     save_results(all_stats)
