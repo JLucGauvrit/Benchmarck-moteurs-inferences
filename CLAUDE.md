@@ -15,6 +15,7 @@ cp .env.example .env          # configure before first run
 # Build & run
 make build                    # build all engine Docker images
 make run                      # run benchmark (engines + orchestrator)
+make run-seq                 # run benchmark sequentially (no concurrency)
 make run-monitoring           # benchmark + Prometheus + Grafana (http://localhost:3000)
 
 # Utilities

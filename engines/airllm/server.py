@@ -1,16 +1,14 @@
 import asyncio
 import json
 import os
-import threading
 import time
 from contextlib import asynccontextmanager
 
 import torch
 from airllm import AutoModel
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from transformers import TextIteratorStreamer
 
 MODEL_PATH = os.getenv("MODEL_PATH", "/models/Qwen/Qwen2.5-7B-Instruct")
 COMPRESSION = os.getenv("COMPRESSION", "4bit")
@@ -19,6 +17,9 @@ CACHE_PATH = os.getenv("AIRLLM_CACHE", "/cache/airllm")
 _model = None
 
 
+# ─────────────────────────────────────────────
+# LOAD MODEL (single instance, no threading)
+# ─────────────────────────────────────────────
 def _load_model():
     global _model
     _model = AutoModel.from_pretrained(
@@ -35,52 +36,60 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="AirLLM inference server", lifespan=lifespan)
+app = FastAPI(title="AirLLM safe benchmark", lifespan=lifespan)
 
 
 class GenerateRequest(BaseModel):
     prompt: str
     max_new_tokens: int = 256
     temperature: float = 1.0
-    stream: bool = True
 
 
-@app.get("/health")
-async def health():
-    return {"status": "ok", "model": MODEL_PATH}
-
-
+# ─────────────────────────────────────────────
+# SAFE GENERATION (NO STREAMING, NO THREADS)
+# ─────────────────────────────────────────────
 @app.post("/generate")
 async def generate(req: GenerateRequest):
     model = _model
 
-    async def token_stream():
+    if model is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+
+    start = time.perf_counter()
+
+    try:
+        # Tokenization
         inputs = model.tokenizer(req.prompt, return_tensors="pt")
-        input_ids = inputs["input_ids"]
 
-        streamer = TextIteratorStreamer(model.tokenizer, skip_special_tokens=True)
-        generation_kwargs = {
-            "input_ids": input_ids,
-            "max_new_tokens": req.max_new_tokens,
-            "streamer": streamer,
-            "do_sample": req.temperature > 0,
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        inputs = {k: v.to(device) for k, v in inputs.items()}
+
+        # IMPORTANT: blocking call (no thread)
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=req.max_new_tokens,
+            do_sample=req.temperature > 0,
+            temperature=req.temperature if req.temperature > 0 else None,
+        )
+
+        # Decode
+        text = model.tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+        latency_ms = round((time.perf_counter() - start) * 1000, 2)
+
+        payload = {
+            "text": text,
+            "latency_ms": latency_ms,
+            "tokens_out": len(outputs[0]),
         }
-        if req.temperature > 0:
-            generation_kwargs["temperature"] = req.temperature
 
-        thread = threading.Thread(target=model.generate, kwargs=generation_kwargs)
-        thread.start()
+        return StreamingResponse(
+            iter([f"data: {json.dumps(payload)}\n\ndata: [DONE]\n\n"]),
+            media_type="text/event-stream",
+        )
 
-        token_count = 0
-        t0 = time.perf_counter()
-        for text_piece in streamer:
-            token_count += 1
-            yield (
-                f"data: {json.dumps({'token': text_piece, 'token_count': token_count, 'elapsed_ms': round((time.perf_counter() - t0) * 1000, 1)})}\n\n"
-            )
-            await asyncio.sleep(0)
-
-        thread.join()
-        yield "data: [DONE]\n\n"
-
-    return StreamingResponse(token_stream(), media_type="text/event-stream")
+    except Exception as e:
+        return StreamingResponse(
+            iter([f"data: {json.dumps({'error': str(e)})}\n\n"]),
+            media_type="text/event-stream",
+        )

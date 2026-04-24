@@ -2,7 +2,7 @@
 #  LLM Inference Benchmark — Makefile
 # ──────────────────────────────────────────────────────────────────────────────
 
-.PHONY: help build run run-monitoring run-dashboard stop clean logs pull-model
+.PHONY: help build run run-seq run-monitoring run-dashboard stop clean logs pull-model
 
 DOCKER_COMPOSE = docker compose
 ENV_FILE = .env
@@ -17,6 +17,31 @@ build: ## Build all engine images
 run: ## Run the benchmark (engines + orchestrator)
 	@cp -n .env.example $(ENV_FILE) 2>/dev/null || true
 	$(DOCKER_COMPOSE) --env-file $(ENV_FILE) up --abort-on-container-exit orchestrator
+
+run-seq: ## Run benchmark sequentially — one engine at a time (single-GPU safe)
+	@cp -n .env.example $(ENV_FILE) 2>/dev/null || true
+	@mkdir -p results
+	@for engine in llamacpp ollama vllm; do \
+	    echo ""; echo "══════════════ $$engine ══════════════"; \
+	    $(DOCKER_COMPOSE) --env-file $(ENV_FILE) up -d $$engine; \
+	    n=0; status="starting"; \
+	    while [ $$n -lt 60 ]; do \
+	        status=$$(docker inspect --format='{{.State.Health.Status}}' bench-$$engine 2>/dev/null || echo "missing"); \
+	        [ "$$status" = "healthy" ] && break; \
+	        [ "$$status" = "unhealthy" ] && break; \
+	        printf "  [%ds] $$status...\r" $$((n*10)); \
+	        sleep 10; n=$$((n+1)); \
+	    done; echo ""; \
+	    if [ "$$status" = "healthy" ]; then \
+	        $(DOCKER_COMPOSE) --env-file $(ENV_FILE) run --no-deps --rm \
+	            -e ENGINES_FILTER=$$engine \
+	            orchestrator; \
+	    else \
+	        echo "  $$engine skipped (status: $$status)"; \
+	    fi; \
+	    $(DOCKER_COMPOSE) stop $$engine; \
+	done
+	@echo ""; echo "══════════════ Done — results in ./results/ ══════════════"
 
 run-dashboard: ## Start the supervision dashboard (http://localhost:8090)
 	@cp -n .env.example $(ENV_FILE) 2>/dev/null || true
