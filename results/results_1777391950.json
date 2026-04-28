@@ -1,0 +1,12 @@
+[
+  {
+    "engine": "airllm",
+    "concurrency": 1,
+    "n_requests": 4,
+    "n_success": 4,
+    "throughput_tok_s": 0.31,
+    "ttft_p50_ms": 156947.38209199999,
+    "ttft_p95_ms": 178467.49324495002,
+    "latency_p95_ms": 178467.86100064992
+  }
+]

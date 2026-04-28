@@ -1,0 +1,32 @@
+[
+  {
+    "engine": "ollama",
+    "concurrency": 1,
+    "n_requests": 4,
+    "n_success": 4,
+    "throughput_tok_s": 55.76,
+    "ttft_p50_ms": 339.0837394999835,
+    "ttft_p95_ms": 374.23977824996655,
+    "latency_p95_ms": 4620.69362929974
+  },
+  {
+    "engine": "ollama",
+    "concurrency": 4,
+    "n_requests": 4,
+    "n_success": 4,
+    "throughput_tok_s": 8.49,
+    "ttft_p50_ms": 21127.156785999887,
+    "ttft_p95_ms": 21232.513511599926,
+    "latency_p95_ms": 30202.746278099745
+  },
+  {
+    "engine": "ollama",
+    "concurrency": 8,
+    "n_requests": 4,
+    "n_success": 4,
+    "throughput_tok_s": 17.67,
+    "ttft_p50_ms": 345.0264084999617,
+    "ttft_p95_ms": 436.8513579499676,
+    "latency_p95_ms": 14528.334698450362
+  }
+]

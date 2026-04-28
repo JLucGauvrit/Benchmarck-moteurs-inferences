@@ -1,0 +1,32 @@
+[
+  {
+    "engine": "llamacpp",
+    "concurrency": 1,
+    "n_requests": 4,
+    "n_success": 4,
+    "throughput_tok_s": 53.04,
+    "ttft_p50_ms": 28.513735500041548,
+    "ttft_p95_ms": 38.798221250033286,
+    "latency_p95_ms": 4853.421460700088
+  },
+  {
+    "engine": "llamacpp",
+    "concurrency": 4,
+    "n_requests": 4,
+    "n_success": 4,
+    "throughput_tok_s": 28.15,
+    "ttft_p50_ms": 81.35364100007791,
+    "ttft_p95_ms": 82.97075240003551,
+    "latency_p95_ms": 9131.384274050151
+  },
+  {
+    "engine": "llamacpp",
+    "concurrency": 8,
+    "n_requests": 4,
+    "n_success": 4,
+    "throughput_tok_s": 29.15,
+    "ttft_p50_ms": 77.92520200007402,
+    "ttft_p95_ms": 79.59957604991814,
+    "latency_p95_ms": 8743.70586440009
+  }
+]

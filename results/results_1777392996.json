@@ -1,0 +1,32 @@
+[
+  {
+    "engine": "vllm",
+    "concurrency": 1,
+    "n_requests": 4,
+    "n_success": 4,
+    "throughput_tok_s": 45.52,
+    "ttft_p50_ms": 52.87527750010668,
+    "ttft_p95_ms": 54.96354139988853,
+    "latency_p95_ms": 5659.017388050074
+  },
+  {
+    "engine": "vllm",
+    "concurrency": 4,
+    "n_requests": 4,
+    "n_success": 4,
+    "throughput_tok_s": 41.08,
+    "ttft_p50_ms": 510.15557849996185,
+    "ttft_p95_ms": 510.669699900086,
+    "latency_p95_ms": 6237.422190849975
+  },
+  {
+    "engine": "vllm",
+    "concurrency": 8,
+    "n_requests": 4,
+    "n_success": 4,
+    "throughput_tok_s": 43.99,
+    "ttft_p50_ms": 85.14895350026563,
+    "ttft_p95_ms": 85.751150999954,
+    "latency_p95_ms": 5822.590128750244
+  }
+]
