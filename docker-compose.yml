@@ -145,8 +145,9 @@ services:
       --host 0.0.0.0
       --port 8000
       --max-model-len 2048
-      --gpu-memory-utilization 0.90
+      --gpu-memory-utilization 0.85
       --dtype float16
+      --enforce-eager
     volumes: *common-volumes
     ports:
       - "8000:8000"

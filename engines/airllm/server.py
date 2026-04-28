@@ -17,9 +17,6 @@ CACHE_PATH = os.getenv("AIRLLM_CACHE", "/cache/airllm")
 _model = None
 
 
-# ─────────────────────────────────────────────
-# LOAD MODEL (single instance, no threading)
-# ─────────────────────────────────────────────
 def _load_model():
     global _model
     _model = AutoModel.from_pretrained(
@@ -36,7 +33,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="AirLLM safe benchmark", lifespan=lifespan)
+app = FastAPI(title="AirLLM benchmark server", lifespan=lifespan)
 
 
 class GenerateRequest(BaseModel):
@@ -45,36 +42,33 @@ class GenerateRequest(BaseModel):
     temperature: float = 1.0
 
 
-# ─────────────────────────────────────────────
-# SAFE GENERATION (NO STREAMING, NO THREADS)
-# ─────────────────────────────────────────────
+@app.get("/health")
+async def health():
+    if _model is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+    return {"status": "ok"}
+
+
 @app.post("/generate")
 async def generate(req: GenerateRequest):
-    model = _model
-
-    if model is None:
+    if _model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
 
     start = time.perf_counter()
 
     try:
-        # Tokenization
-        inputs = model.tokenizer(req.prompt, return_tensors="pt")
-
+        inputs = _model.tokenizer(req.prompt, return_tensors="pt")
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         inputs = {k: v.to(device) for k, v in inputs.items()}
 
-        # IMPORTANT: blocking call (no thread)
-        outputs = model.generate(
+        outputs = _model.generate(
             **inputs,
             max_new_tokens=req.max_new_tokens,
             do_sample=req.temperature > 0,
             temperature=req.temperature if req.temperature > 0 else None,
         )
 
-        # Decode
-        text = model.tokenizer.decode(outputs[0], skip_special_tokens=True)
-
+        text = _model.tokenizer.decode(outputs[0], skip_special_tokens=True)
         latency_ms = round((time.perf_counter() - start) * 1000, 2)
 
         payload = {

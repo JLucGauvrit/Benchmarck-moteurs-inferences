@@ -21,7 +21,7 @@ run: ## Run the benchmark (engines + orchestrator)
 run-seq: ## Run benchmark sequentially — one engine at a time (single-GPU safe)
 	@cp -n .env.example $(ENV_FILE) 2>/dev/null || true
 	@mkdir -p results
-	@for engine in llamacpp ollama vllm; do \
+	@for engine in airllm llamacpp ollama vllm; do \
 	    echo ""; echo "══════════════ $$engine ══════════════"; \
 	    $(DOCKER_COMPOSE) --env-file $(ENV_FILE) up -d $$engine; \
 	    n=0; status="starting"; \
